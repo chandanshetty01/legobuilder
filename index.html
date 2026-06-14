@@ -124,9 +124,68 @@
     color:var(--txt);font-size:12px;cursor:pointer}
   #toolbar button:hover{border-color:var(--accent2)}
   .hide{display:none!important}
+
+  /* ---- Touch + overlap fixes (apply everywhere) ---- */
+  /* the main 3D canvas owns drag/pinch gestures, not the page */
+  #canvas-wrap>canvas{touch-action:none}
+  button{touch-action:manipulation}
+  /* keep the next-pieces panel clear of the count pills (both were top-right) */
+  #bp-nextpieces{top:58px}
+
+  /* floating hamburger + drawer scrim (shown only on touch/narrow layouts) */
+  #menu-toggle{display:none;position:fixed;z-index:46;
+    top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));
+    background:rgba(20,27,44,.92);color:var(--txt);border:1px solid var(--line);
+    border-radius:12px;padding:10px 14px;font-size:15px;font-weight:700;
+    backdrop-filter:blur(6px);cursor:pointer}
+  #scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:48}
+  #scrim.show{display:block}
+
+  /* ---- Phone / tablet / touch layout ---- */
+  @media (max-width:1024px), (pointer:coarse){
+    html,body{height:100dvh}
+    #menu-toggle{display:block}
+    /* sidebar becomes a slide-in drawer so the canvas owns the screen */
+    #sidebar{position:fixed;z-index:50;top:0;left:0;bottom:0;width:min(86vw,360px);
+      transform:translateX(-100%);transition:transform .25s ease;
+      box-shadow:0 0 40px rgba(0,0,0,.55);
+      padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+    #sidebar.open{transform:translateX(0)}
+    #canvas-wrap{flex:1}
+    /* bigger touch targets; 16px inputs stop iOS auto-zoom on focus */
+    .modes button,.btn,#toolbar button,.bp{padding:12px;font-size:14px}
+    /* let flex buttons shrink to fit (min-width:auto otherwise overflows the row) */
+    #toolbar button,#bp-hud .btn,.modes button{min-width:0;overflow:hidden;
+      text-overflow:ellipsis;white-space:nowrap}
+    .pieces{grid-template-columns:repeat(3,1fr);max-height:none}
+    .piece .thumb{width:74px;height:74px}
+    .loadpart input{font-size:16px;padding:11px}
+
+    #hud{top:calc(8px + env(safe-area-inset-top));right:8px;gap:6px}
+
+    /* blueprint guide -> bottom sheet, sitting above the toolbar */
+    #bp-hud{left:8px;right:8px;top:auto;width:auto;max-height:44vh;overflow:auto;
+      bottom:calc(74px + env(safe-area-inset-bottom))}
+    #bp-preview{height:104px}
+
+    /* next pieces -> compact horizontal strip near the top (thumb + count) */
+    #bp-nextpieces{top:calc(60px + env(safe-area-inset-top));left:8px;right:8px;width:auto;
+      max-height:none;overflow:visible}
+    #bp-nextpieces .np-head{flex-direction:row;align-items:baseline;gap:8px}
+    #np-list{flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:4px}
+    .np-item{flex:0 0 auto}
+    .np-item .np-name{display:none}
+
+    /* toolbar -> full-width bottom bar with room for the home indicator */
+    #toolbar{left:8px;right:8px;transform:none;justify-content:center;
+      bottom:calc(8px + env(safe-area-inset-bottom))}
+    #toolbar button{flex:1}
+  }
 </style>
 </head>
 <body>
+<button id="menu-toggle" aria-label="Toggle menu">☰ Pieces</button>
+<div id="scrim"></div>
 <div id="app">
   <aside id="sidebar">
     <div class="brand">
@@ -1032,6 +1091,19 @@ function updateCount(){ document.getElementById('count').textContent = state.bri
 // mode buttons
 document.querySelectorAll('.modes button').forEach(b => {
   b.addEventListener('click', () => { if (state.bp) exitBlueprint(); setMode(b.dataset.mode); });
+});
+
+// mobile drawer: hamburger toggles the sidebar; scrim or selecting an item closes it
+const sidebarEl = document.getElementById('sidebar');
+const scrimEl = document.getElementById('scrim');
+function openDrawer(){ sidebarEl.classList.add('open'); scrimEl.classList.add('show'); }
+function closeDrawer(){ sidebarEl.classList.remove('open'); scrimEl.classList.remove('show'); }
+document.getElementById('menu-toggle').addEventListener('click', () =>
+  sidebarEl.classList.contains('open') ? closeDrawer() : openDrawer());
+scrimEl.addEventListener('click', closeDrawer);
+// picking a piece / blueprint / mode closes the drawer so the canvas is tappable
+sidebarEl.addEventListener('click', e => {
+  if (e.target.closest('.piece, .bp, .modes button')) closeDrawer();
 });
 
 // toolbar
