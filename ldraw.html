@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BrickBuilder — LDraw Models (real LEGO parts)</title>
+<style>
+  :root{--bg:#0e1320;--panel:#161d2e;--panel2:#1d2740;--line:#2b3756;--txt:#e8edf7;--muted:#8c98b5;--accent:#ffcd00;--accent2:#37a0ff}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  #app{display:flex;height:100%}
+  #sidebar{width:300px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto}
+  .brand{padding:16px 18px;border-bottom:1px solid var(--line)}
+  .brand h1{margin:0;font-size:18px}.brand h1 span{color:var(--accent)}
+  .brand p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+  .brand a{color:var(--accent2);font-size:12px;text-decoration:none}
+  .section{padding:14px 16px;border-bottom:1px solid var(--line)}
+  .section h2{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  select,button{font-family:inherit}
+  select{width:100%;padding:9px;border-radius:8px;background:var(--panel2);color:var(--txt);border:1px solid var(--line);font-size:13px}
+  .btn{padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:12px;font-weight:600;cursor:pointer}
+  .btn:hover{border-color:var(--accent2)}
+  .btn.primary{background:var(--accent);color:#1a1a1a;border-color:var(--accent)}
+  .row{display:flex;gap:8px;margin-top:8px}
+  .row .btn{flex:1}
+  .progress{height:6px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:10px}
+  .progress>div{height:100%;width:0;background:var(--accent);transition:width .2s}
+  #stepinfo{font-size:13px;margin-top:8px;color:var(--muted)}#stepinfo b{color:var(--txt)}
+  input[type=range]{width:100%;margin-top:10px}
+  .tips{font-size:11px;color:var(--muted);line-height:1.6}
+  #canvas-wrap{position:relative;flex:1;min-width:0}
+  canvas{display:block}
+  #hud{position:absolute;top:14px;left:14px;background:rgba(20,27,44,.9);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13px;backdrop-filter:blur(6px)}
+  #hud b{color:var(--accent)}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--txt);background:rgba(14,19,32,.6)}
+  #loading .bar{width:220px;height:6px;background:var(--panel2);border-radius:4px;overflow:hidden}
+  #loading .bar>div{height:100%;width:0;background:var(--accent)}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <h1>Brick<span>Builder</span> · LDraw</h1>
+      <p>Real official LEGO parts via the open-source LDraw library.</p>
+      <a href="index.html">← Back to the 23-piece builder</a>
+    </div>
+
+    <div class="section">
+      <h2>Model</h2>
+      <select id="model"></select>
+      <div class="tips" style="margin-top:8px">Loaded with Three.js <b style="color:var(--accent2)">LDrawLoader</b> from packed <code>.mpd</code> files (every sub-part, incl. wheels, embedded).</div>
+    </div>
+
+    <div class="section">
+      <h2>Build instructions</h2>
+      <div id="stepinfo">No model loaded.</div>
+      <div class="progress"><div id="bar"></div></div>
+      <input type="range" id="slider" min="1" max="1" value="1" />
+      <div class="row">
+        <button class="btn" id="prev">◀ Prev</button>
+        <button class="btn" id="next">Next ▶</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="restart">⟲ Restart</button>
+        <button class="btn primary" id="all">Build all</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>How it works</h2>
+      <div class="tips">
+        These are real LEGO sets in the <b style="color:var(--txt)">LDraw</b> open format.
+        The model carries its own <b style="color:var(--txt)">building steps</b> — step through them just like our blueprints,
+        but with thousands of authentic parts.<br><br>
+        Drag to orbit · scroll to zoom · right-drag to pan.
+      </div>
+    </div>
+  </aside>
+
+  <div id="canvas-wrap">
+    <div id="hud">Step <b id="hud-step">–</b> / <span id="hud-total">–</span> · Parts: <b id="hud-parts">0</b></div>
+    <div id="loading"><div>Loading real LEGO parts…</div><div class="bar"><div id="lbar"></div></div></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
+
+// Open-source LDraw assets (served from the three.js GitHub repo via jsDelivr CDN)
+const LIB  = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/ldraw/officialLibrary/';
+const MODELS = [
+  ['car.ldr_Packed.mpd', 'Car (with wheels)'],
+  ['889-1-RadarTruck.mpd_Packed.mpd', 'Radar Truck'],
+  ['4838-1-MiniVehicles.mpd_Packed.mpd', 'Mini Vehicles'],
+  ['5935-1-IslandHopper.mpd_Packed.mpd', 'Island Hopper (plane)'],
+  ['30023-1-Lighthouse.ldr_Packed.mpd', 'Lighthouse'],
+  ['7140-1-X-wingFighter.mpd_Packed.mpd', 'X-Wing Fighter'],
+  ['4489-1-AT-AT-Mini.mpd_Packed.mpd', 'AT-AT (mini)'],
+];
+
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#aebdd6');
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 1e5);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+wrap.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#5b6577', 1.1));
+const dir = new THREE.DirectionalLight('#ffffff', 1.2);
+dir.position.set(1, 1.4, 0.8); scene.add(dir);
+
+// ---- model + building-step state ----
+let model = null;
+let totalSteps = 1, curStep = 1, stepObjects = [];
+
+function setProgress(){
+  document.getElementById('bar').style.width = (curStep/totalSteps*100)+'%';
+  document.getElementById('stepinfo').innerHTML =
+    totalSteps>1 ? `<b>Step ${curStep} of ${totalSteps}</b> — parts for each step appear as you advance.`
+                 : `This model has a single step.`;
+  document.getElementById('hud-step').textContent = curStep;
+  document.getElementById('hud-total').textContent = totalSteps;
+  document.getElementById('slider').value = curStep;
+  let visible = 0;
+  model && model.traverse(o => {
+    if (!o.isMesh) return;
+    let shown = true, p = o;
+    while (p){ if (!p.visible){ shown = false; break; } p = p.parent; }  // rendered only if all ancestors visible
+    if (shown) visible++;
+  });
+  document.getElementById('hud-parts').textContent = visible;
+}
+
+// Show only the parts whose building step <= curStep
+function applyStep(){
+  if (!model) return;
+  model.traverse(o => {
+    if (o.userData && o.userData.buildingStep !== undefined)
+      o.visible = o.userData.buildingStep <= curStep;
+  });
+  setProgress();
+}
+
+function goto(n){ curStep = Math.max(1, Math.min(totalSteps, n)); applyStep(); }
+
+document.getElementById('prev').onclick = () => goto(curStep-1);
+document.getElementById('next').onclick = () => goto(curStep+1);
+document.getElementById('restart').onclick = () => goto(1);
+document.getElementById('all').onclick = () => goto(totalSteps);
+document.getElementById('slider').oninput = e => goto(+e.target.value);
+
+// ---- load a model ----
+function fitCamera(obj){
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = size.length() * 0.5 || 100;
+  controls.target.copy(center);
+  const d = radius / Math.sin((camera.fov*Math.PI/180)/2) * 1.1;
+  camera.position.set(center.x + d*0.7, center.y + d*0.5, center.z + d*0.7);
+  camera.near = radius/100; camera.far = radius*100; camera.updateProjectionMatrix();
+}
+
+const loader = new LDrawLoader();
+loader.smoothNormals = true;
+let materialsReady = loader.preloadMaterials(LIB + 'LDConfig.ldr').catch(()=>{});
+
+function loadModel(file){
+  document.getElementById('loading').classList.remove('hide');
+  document.getElementById('lbar').style.width = '0%';
+  if (model){ scene.remove(model); model = null; }
+  materialsReady.then(() => {
+    loader.load(LIB + 'models/' + file, group => {
+      // LDraw is Y-down → flip to our Y-up
+      group.rotation.x = Math.PI;
+      // drop edge lines so only solid parts show (avoids conditional-line material dependency)
+      const toRemove = [];
+      group.traverse(o => { if (o.isLineSegments || o.isLine) toRemove.push(o); });
+      toRemove.forEach(o => o.parent && o.parent.remove(o));
+      model = group;
+      totalSteps = Math.max(1, group.userData.numBuildingSteps || 1);
+      curStep = totalSteps;                 // show finished model first
+      document.getElementById('slider').max = totalSteps;
+      scene.add(group);
+      fitCamera(group);
+      applyStep();
+      document.getElementById('loading').classList.add('hide');
+    },
+    xhr => { if (xhr.total) document.getElementById('lbar').style.width = (xhr.loaded/xhr.total*100)+'%'; },
+    err => { document.getElementById('loading').innerHTML = '<div style="color:#ff6b6b">Failed to load model.<br>'+err+'</div>'; });
+  });
+}
+
+// model dropdown
+const sel = document.getElementById('model');
+MODELS.forEach(([file,label]) => { const o=document.createElement('option'); o.value=file; o.textContent=label; sel.appendChild(o); });
+sel.onchange = () => loadModel(sel.value);
+
+// ---- resize + loop ----
+function resize(){ const w=wrap.clientWidth,h=wrap.clientHeight; renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize);
+function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); }
+
+resize(); loop();
+loadModel(MODELS[0][0]);          // start with the car
+window.__ldraw = () => ({ totalSteps, curStep, loaded: !!model });   // test hook
+</script>
+</body>
+</html>
