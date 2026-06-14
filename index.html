@@ -454,17 +454,15 @@ baseGroup.add(grid);
 // and drive a shared grayscale detail map (roughness + faint bump). Applied
 // generically to every part — present or runtime-added — with NO per-part
 // flags. If the texture file is missing the material just stays plain.
-let absDetailTex = null;
+let absDetailTex = null, absNormalTex = null;
 const detailMats = new Set();
 function attachDetail(mat){
   if (!mat || mat.userData.noDetail) return;
   detailMats.add(mat);
-  if (absDetailTex){
-    mat.roughnessMap = absDetailTex;
-    mat.bumpMap = absDetailTex;
-    mat.bumpScale = 0.12;
-    mat.needsUpdate = true;
-  }
+  if (absDetailTex) mat.roughnessMap = absDetailTex;          // satin roughness variation
+  if (absNormalTex){ mat.normalMap = absNormalTex;            // molded-plastic surface relief
+    mat.normalScale = new THREE.Vector2(0.45, 0.45); }
+  if (absDetailTex || absNormalTex) mat.needsUpdate = true;
 }
 const BOX_UV_K = 0.25;                 // ~5 grain repeats per stud (20 LDU)
 function addBoxUV(geo){
@@ -490,20 +488,35 @@ function textureMeshes(root){             // box-UV + detail every mesh under ro
 }
 
 const texLoader = new THREE.TextureLoader();
-texLoader.load('textures/abs_detail.png', t => {
-  t.colorSpace = THREE.NoColorSpace;     // linear data map, not an sRGB colour
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  absDetailTex = t;
-  detailMats.forEach(attachDetail);      // retro-fit materials made before load
-}, undefined, () => {});
-texLoader.load('textures/sky.jpg', t => {
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.mapping = THREE.EquirectangularReflectionMapping;
-  scene.background = t;
+// Linear data maps (roughness, normal) projected onto pieces via box-UV.
+function loadDataTex(path, set){
+  texLoader.load(path, t => {
+    t.colorSpace = THREE.NoColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    set(t);
+    detailMats.forEach(attachDetail);    // retro-fit materials created before load
+  }, undefined, () => {});
+}
+loadDataTex('textures/plastic_surface.png', t => absDetailTex = t);   // satin roughness
+loadDataTex('textures/plastic_normal.png',  t => absNormalTex = t);   // molded relief
+// Reflections: a soft studio env gives premium plastic highlights; the sky stays
+// the visible backdrop. Studio wins if present; otherwise the sky lights the scene.
+let envApplied = false;
+function applyEnv(t){
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromEquirectangular(t).texture;
   pmrem.dispose();
+  envApplied = true;
+}
+texLoader.load('textures/studio_env.jpg', t => {
+  t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+  applyEnv(t);
+}, undefined, () => {});
+texLoader.load('textures/sky.jpg', t => {
+  t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = t;
+  if (!envApplied) applyEnv(t);
 }, undefined, () => {});
 texLoader.load('textures/grass.jpg', t => {
   t.colorSpace = THREE.SRGBColorSpace;
