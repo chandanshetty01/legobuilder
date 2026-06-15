@@ -125,6 +125,19 @@
   #toolbar button:hover{border-color:var(--accent2)}
   .hide{display:none!important}
 
+  /* Collapse toggle for the bottom blueprint panel (so it stops covering the
+     model). Tapping the chevron minimises the panel to just its title bar. */
+  #bp-collapse{margin-left:auto;background:none;border:0;color:var(--muted);
+    font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;transition:transform .2s}
+  #bp-collapse:hover{color:var(--txt)}
+  #bp-hud.collapsed #bp-collapse{transform:rotate(180deg)}
+  #bp-hud.collapsed .goal-label,
+  #bp-hud.collapsed #bp-preview,
+  #bp-hud.collapsed .progress,
+  #bp-hud.collapsed #bp-status,
+  #bp-hud.collapsed .row{display:none}
+  #bp-hud.collapsed .title{margin-bottom:0}
+
   /* ---- Touch + overlap fixes (apply everywhere) ---- */
   /* the main 3D canvas owns drag/pinch gestures, not the page */
   #canvas-wrap>canvas{touch-action:none}
@@ -239,7 +252,7 @@
     </div>
 
     <div id="bp-hud" class="hide">
-      <div class="title"><span class="ico" id="bp-ico">🏠</span><span id="bp-name">Blueprint</span></div>
+      <div class="title"><span class="ico" id="bp-ico">🏠</span><span id="bp-name">Blueprint</span><button id="bp-collapse" aria-label="Hide panel" title="Hide / show panel">▾</button></div>
       <div class="goal-label">Goal — finished model</div>
       <canvas id="bp-preview"></canvas>
       <div class="progress"><div id="bp-bar"></div></div>
@@ -817,7 +830,7 @@ async function startModelBlueprint(def){
   clearAll();
   setMode('blueprint');
   state.bp = { type:'model', def, model:null, total:1, index:0 };
-  document.getElementById('bp-hud').classList.remove('hide');
+  document.getElementById('bp-hud').classList.remove('hide', 'collapsed');   // start expanded
   document.getElementById('bp-ico').textContent = def.icon;
   document.getElementById('bp-name').textContent = def.name;
   document.getElementById('bp-bar').style.width = '0%';
@@ -1118,6 +1131,8 @@ document.getElementById('t-reset-view').addEventListener('click', resetView);
 document.getElementById('bp-next').addEventListener('click', placeBpStep);
 document.getElementById('bp-auto').addEventListener('click', autoBuild);
 document.getElementById('bp-exit').addEventListener('click', exitBlueprint);
+document.getElementById('bp-collapse').addEventListener('click', () =>
+  document.getElementById('bp-hud').classList.toggle('collapsed'));
 
 // add-any-part controls
 document.getElementById('addpart').addEventListener('click', addPartByNumber);
