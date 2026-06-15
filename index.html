@@ -379,14 +379,15 @@ const state = {
 // ----------------------------------------------------------------------------
 const wrap = document.getElementById('canvas-wrap');
 const scene = new THREE.Scene();
-// Clean studio "sweep" backdrop (light top → soft grey floor) — official-LEGO
-// product-render look instead of the cartoon sky.
+// Professional studio backdrop — a soft radial vignette (bright behind the
+// subject, gently darkening to the edges) like a high-end product / video set.
 scene.background = (() => {
-  const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+  const s = 1024;
+  const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#f2f4f7'); g.addColorStop(1, '#e7eaf0');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 8, 256);
+  const g = ctx.createRadialGradient(s/2, s*0.44, s*0.06, s/2, s*0.52, s*0.74);
+  g.addColorStop(0, '#fdfefe'); g.addColorStop(0.5, '#eef1f5'); g.addColorStop(1, '#cdd3dd');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 })();
 
@@ -418,8 +419,9 @@ sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.radius = 5;                 // soft contact shadow, not a hard edge
 sun.shadow.bias = -0.0004;
 const sc = sun.shadow.camera;
-sc.left = -HALF-4; sc.right = HALF+4; sc.top = HALF+4; sc.bottom = -HALF-4;
-sc.near = 1; sc.far = 90;
+const SH = N + 16;                      // shadow area covers models larger than the old base
+sc.left = -SH; sc.right = SH; sc.top = SH; sc.bottom = -SH;
+sc.near = 1; sc.far = 120;
 scene.add(sun);
 const fill = new THREE.DirectionalLight('#ffffff', 0.45);   // opposite fill, lifts the shadows
 fill.position.set(-16, 18, -10);
@@ -429,39 +431,17 @@ rim.position.set(-6, 26, -18);
 scene.add(rim);
 
 // ----------------------------------------------------------------------------
-// Baseplate (green plate + grid of studs via InstancedMesh)
+// Ground — an INVISIBLE shadow-catcher that is also the click target for
+// building. No visible baseplate, so large models aren't size-constrained and
+// the studio backdrop stays clean for product/video shots. Builds rest on y=0
+// and cast a soft contact shadow onto the floor (like an official LEGO render).
 // ----------------------------------------------------------------------------
-const baseGroup = new THREE.Group();
-scene.add(baseGroup);
-
-const baseMat = new THREE.MeshPhysicalMaterial({ color:'#2f8a3e', roughness:.5, metalness:0,
-  clearcoat:.35, clearcoatRoughness:.32, envMapIntensity:.6 });   // glossy LEGO-green ABS
-const baseGeo = new THREE.BoxGeometry(N, PLATE*2, N);
-const basePlate = new THREE.Mesh(baseGeo, baseMat);
-basePlate.position.y = -PLATE; // top surface at y=0
+const groundGeo = new THREE.PlaneGeometry(N * 8, N * 8);
+groundGeo.rotateX(-Math.PI / 2);                 // lie flat at y=0
+const basePlate = new THREE.Mesh(groundGeo, new THREE.ShadowMaterial({ opacity: 0.24 }));
 basePlate.receiveShadow = true;
 basePlate.userData.isBase = true;
-baseGroup.add(basePlate);
-
-const studGeo = new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 16);
-const studMat = baseMat.clone();          // studs stay solid (no texture smearing on cylinders)
-const baseStuds = new THREE.InstancedMesh(studGeo, studMat, N*N);
-baseStuds.receiveShadow = true;
-const tmp = new THREE.Object3D();
-let si = 0;
-for (let x=0; x<N; x++) for (let z=0; z<N; z++){
-  tmp.position.set(x + 0.5 - HALF, STUD_H/2, z + 0.5 - HALF);
-  tmp.updateMatrix();
-  baseStuds.setMatrixAt(si++, tmp.matrix);
-}
-baseStuds.instanceMatrix.needsUpdate = true;
-baseGroup.add(baseStuds);
-
-// Grid lines for clarity
-const grid = new THREE.GridHelper(N, N, 0x2c5e34, 0x2c5e34);
-grid.position.y = 0.01;
-grid.material.opacity = 0.35; grid.material.transparent = true;
-baseGroup.add(grid);
+scene.add(basePlate);
 
 // ----------------------------------------------------------------------------
 // Scenery textures (textures/*.jpg, AI-generated) — optional: the flat colours
