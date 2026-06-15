@@ -379,7 +379,16 @@ const state = {
 // ----------------------------------------------------------------------------
 const wrap = document.getElementById('canvas-wrap');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#aebdd6');
+// Clean studio "sweep" backdrop (light top → soft grey floor) — official-LEGO
+// product-render look instead of the cartoon sky.
+scene.background = (() => {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#f2f4f7'); g.addColorStop(1, '#e7eaf0');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 8, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
 const DEFAULT_CAM = new THREE.Vector3(20, 18, 24);
@@ -389,6 +398,7 @@ const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;   // keeps env-lit plastic from blowing out
+renderer.toneMappingExposure = 1.12;                  // bright, clean studio exposure
 wrap.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -398,16 +408,25 @@ controls.maxPolarAngle = Math.PI * 0.49;
 controls.minDistance = 6;
 controls.maxDistance = 70;
 
-// Lights
-scene.add(new THREE.HemisphereLight('#ffffff', '#6b7280', 0.85));
-const sun = new THREE.DirectionalLight('#ffffff', 1.1);
-sun.position.set(18, 30, 12);
+// Lights — soft, even multi-softbox studio rig (official-LEGO product look):
+// a key light with a soft shadow, an opposite fill, and a gentle back rim.
+scene.add(new THREE.HemisphereLight('#ffffff', '#aab0bd', 1.18));
+const sun = new THREE.DirectionalLight('#ffffff', 1.0);
+sun.position.set(18, 34, 14);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.radius = 5;                 // soft contact shadow, not a hard edge
+sun.shadow.bias = -0.0004;
 const sc = sun.shadow.camera;
 sc.left = -HALF-4; sc.right = HALF+4; sc.top = HALF+4; sc.bottom = -HALF-4;
-sc.near = 1; sc.far = 80;
+sc.near = 1; sc.far = 90;
 scene.add(sun);
+const fill = new THREE.DirectionalLight('#ffffff', 0.45);   // opposite fill, lifts the shadows
+fill.position.set(-16, 18, -10);
+scene.add(fill);
+const rim = new THREE.DirectionalLight('#ffffff', 0.3);     // back/top rim for a clean edge
+rim.position.set(-6, 26, -18);
+scene.add(rim);
 
 // ----------------------------------------------------------------------------
 // Baseplate (green plate + grid of studs via InstancedMesh)
@@ -415,7 +434,8 @@ scene.add(sun);
 const baseGroup = new THREE.Group();
 scene.add(baseGroup);
 
-const baseMat = new THREE.MeshStandardMaterial({ color:'#3a7d44', roughness:.9 });
+const baseMat = new THREE.MeshPhysicalMaterial({ color:'#2f8a3e', roughness:.5, metalness:0,
+  clearcoat:.35, clearcoatRoughness:.32, envMapIntensity:.6 });   // glossy LEGO-green ABS
 const baseGeo = new THREE.BoxGeometry(N, PLATE*2, N);
 const basePlate = new THREE.Mesh(baseGeo, baseMat);
 basePlate.position.y = -PLATE; // top surface at y=0
@@ -515,17 +535,7 @@ texLoader.load('textures/studio_env.jpg', t => {
 }, undefined, () => {});
 texLoader.load('textures/sky.jpg', t => {
   t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
-  scene.background = t;
-  if (!envApplied) applyEnv(t);
-}, undefined, () => {});
-texLoader.load('textures/grass.jpg', t => {
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(N/6, N/6);
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  baseMat.map = t;
-  baseMat.color.set('#ffffff');             // texture carries the green
-  baseMat.needsUpdate = true;
+  if (!envApplied) applyEnv(t);             // reflection fallback only; backdrop stays studio
 }, undefined, () => {});
 
 // ----------------------------------------------------------------------------
